@@ -1,0 +1,7 @@
+[project]
+name = "autosteer"
+version = "0.1.0"
+description = "Autosteer"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
