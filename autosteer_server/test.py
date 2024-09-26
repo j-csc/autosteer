@@ -2,11 +2,9 @@ from dotenv import load_dotenv
 import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import modal
 
-"""
-TODO:
-- setup modal inference server
-"""
+app = modal.App()
 
 load_dotenv()
 
@@ -18,7 +16,6 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 model = AutoModelForCausalLM.from_pretrained(
     "google/gemma-2-2b-it",
-    device_map="auto",
     output_hidden_states=True,
     torch_dtype=torch.bfloat16,
     token=hf_access_token,
