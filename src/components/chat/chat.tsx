@@ -36,15 +36,15 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="flex flex-col h-full">
       <ScrollArea className="flex-grow">
-        <div className="p-4">
+        <div className="p-4 space-y-4">
           {messages.map((message, index) => (
             <div
               key={index}
               className={`flex ${
                 message.role === "user" ? "justify-end" : "justify-start"
-              } mb-4`}
+              }`}
             >
               <div
                 className={`flex items-start ${
@@ -64,7 +64,7 @@ export default function Chat() {
                   </AvatarFallback>
                 </Avatar>
                 <div
-                  className={`mx-2 p-3 rounded-lg ${
+                  className={`mx-2 p-2 rounded-lg ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"

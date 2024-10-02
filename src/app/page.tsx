@@ -7,7 +7,7 @@ export default function Home() {
     <Layout>
       <div className="flex flex-col w-full h-screen">
         <Navbar />
-        <div className="p-8 w-full h-screen">
+        <div className="flex-grow p-8 overflow-hidden">
           <Playground />
         </div>
       </div>
