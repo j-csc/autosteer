@@ -1,16 +1,34 @@
+"use client";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import Search from "./search";
+import Inspect from "./inspect";
+import Autosteer from "./autosteer";
+
 export default function Explorer() {
   return (
     <div className="h-full overflow-auto">
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-4">Explorer</h2>
-        {/* Add your explorer content here */}
-        <div className="space-y-2">
-          <div className="p-2 bg-secondary rounded">Item 1</div>
-          <div className="p-2 bg-secondary rounded">Item 2</div>
-          <div className="p-2 bg-secondary rounded">Item 3</div>
-          {/* Add more items as needed */}
+      <ScrollArea className="h-full">
+        <div className="p-4">
+          <Tabs defaultValue="search" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="search">Search</TabsTrigger>
+              <TabsTrigger value="inspect">Inspect</TabsTrigger>
+              <TabsTrigger value="autosteer">Autosteer</TabsTrigger>
+            </TabsList>
+            <TabsContent value="search">
+              <Search />
+            </TabsContent>
+            <TabsContent value="inspect">
+              <Inspect />
+            </TabsContent>
+            <TabsContent value="autosteer">
+              <Autosteer />
+            </TabsContent>
+          </Tabs>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }
