@@ -60,7 +60,7 @@ export default function Chat() {
                     }
                   />
                   <AvatarFallback>
-                    {message.role === "user" ? "U" : "AI"}
+                    {message.role === "user" ? "U" : "AS"}
                   </AvatarFallback>
                 </Avatar>
                 <div
