@@ -374,10 +374,6 @@ class ModalInterp:
         def info() -> dict[str, Any]:
             return self.get_model_info()
 
-        @api.get("/explanations")
-        def explanations() -> list[dict[str, Any]]:
-            return self.get_explanations()
-
         @api.post("/generate")
         def generate(req: GenerateRequest) -> dict[str, Any]:
             return self.generate_with_explanations(
