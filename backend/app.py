@@ -239,6 +239,18 @@ class ModalInterp:
             out.append(rows)
         return out
 
+    def _compute_feature_dla(
+        self,
+        token_residual: Tensor,
+        feature_acts: Tensor,
+        target_token_id: int | None = None,
+        top_k: int = 5,
+    ):
+        W_dec = self.sae.W_dec.to(token_residual.device, token_residual.dtype)
+        W_U = self.model.W_U.to(token_residual.device, token_residual.dtype)
+
+        pass
+
     def generate_with_explanations(
         self, prompt: str, max_new_tokens: int = 20, top_k: int = 5
     ) -> dict[str, Any]:
@@ -347,6 +359,7 @@ class ModalInterp:
     @modal.asgi_app()
     def web(self):
         from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
         from pydantic import BaseModel, Field
 
         class GenerateRequest(BaseModel):
@@ -365,6 +378,14 @@ class ModalInterp:
             max_new_tokens: int = Field(default=100, ge=0, le=512)
 
         api = FastAPI()
+
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @api.get("/health")
         def health() -> dict[str, str]:

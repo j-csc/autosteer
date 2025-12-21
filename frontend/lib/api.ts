@@ -7,17 +7,17 @@ import type {
   HealthResponse,
 } from "./types";
 
-const SERVER_URL = process.env.SERVER_URL || process.env.NEXT_PUBLIC_SERVER_URL || "";
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "";
 
 if (!SERVER_URL) {
-  console.warn("SERVER_URL is not set. API calls will fail.");
+  console.warn("SERVER_URL is not set");
 }
 
 class APIError extends Error {
   constructor(
     message: string,
     public status?: number,
-    public data?: any
+    public data?: unknown,
   ) {
     super(message);
     this.name = "APIError";
@@ -26,7 +26,7 @@ class APIError extends Error {
 
 async function fetchAPI<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const url = `${SERVER_URL}${endpoint}`;
 
@@ -44,7 +44,7 @@ async function fetchAPI<T>(
       throw new APIError(
         errorData.message || `HTTP ${response.status}: ${response.statusText}`,
         response.status,
-        errorData
+        errorData,
       );
     }
 
@@ -54,22 +54,22 @@ async function fetchAPI<T>(
       throw error;
     }
     throw new APIError(
-      error instanceof Error ? error.message : "Unknown error occurred"
+      error instanceof Error ? error.message : "Unknown error occurred",
     );
   }
 }
 
 export const api = {
   async health(): Promise<HealthResponse> {
-    return fetchAPI<HealthResponse>("/health");
+    return fetchAPI<HealthResponse>("health");
   },
 
   async getModelInfo(): Promise<ModelInfo> {
-    return fetchAPI<ModelInfo>("/info");
+    return fetchAPI<ModelInfo>("info");
   },
 
   async generate(request: GenerateRequest): Promise<GenerateResponse> {
-    return fetchAPI<GenerateResponse>("/generate", {
+    return fetchAPI<GenerateResponse>("generate", {
       method: "POST",
       body: JSON.stringify({
         prompt: request.prompt,
@@ -80,7 +80,7 @@ export const api = {
   },
 
   async steer(request: SteerRequest): Promise<SteerResponse> {
-    return fetchAPI<SteerResponse>("/steer", {
+    return fetchAPI<SteerResponse>("steer", {
       method: "POST",
       body: JSON.stringify({
         prompt: request.prompt,
