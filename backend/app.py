@@ -486,20 +486,37 @@ class ModalInterp:
         steering_configs: list[SteeringConfig],
         max_new_tokens: int = 100,
     ) -> str:
+        result = self.generate_with_steering_and_explanations(
+            prompt, steering_configs, max_new_tokens, top_k=5
+        )
+        return result["full_text"]
+
+    def generate_with_steering_and_explanations(
+        self,
+        prompt: str,
+        steering_configs: list[SteeringConfig],
+        max_new_tokens: int = 100,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        """Generate with steering and capture feature explanations."""
         from functools import partial
 
         from sae_lens import SAE
 
         assert self.sae is not None and isinstance(self.sae, SAE)
 
-        input_ids = self.model.to_tokens(
-            prompt, prepend_bos=self.sae.cfg.metadata.prepend_bos
-        )
+        # Get input features first (no steering needed for input analysis)
+        input_tokens, input_features = self._get_input_features(prompt, top_k)
+        input_rows = self._explain_features(input_features)
+        input_token_explanations = [
+            {"token": tok, "features": feats}
+            for tok, feats in zip(input_tokens, input_rows)
+        ]
 
+        # Prepare steering vector
         combined_steering_vector: Tensor = torch.zeros(
             self.sae.cfg.d_in, device=self.model.cfg.device
         )
-
         for cfg in steering_configs:
             combined_steering_vector += (
                 cfg.max_act
@@ -507,16 +524,46 @@ class ModalInterp:
                 * self.sae.W_dec[cfg.steering_feature].to(self.model.cfg.device)
             )
 
-        def steering(activations: Tensor, hook: Any, steering_vector: Tensor) -> Tensor:
+        # Prepare for generation with both steering and feature capture
+        input_ids = self.model.to_tokens(
+            prompt, prepend_bos=self.sae.cfg.metadata.prepend_bos
+        )
+
+        captured_features: list[list[tuple[float, int]]] = []
+        seen_prompt_len: int | None = None
+
+        def combined_hook(
+            activations: Tensor, hook: Any, steering_vector: Tensor
+        ) -> Tensor:
+            nonlocal seen_prompt_len
+
+            # Apply steering to last token
             v = steering_vector.to(device=activations.device, dtype=activations.dtype)
             acts = activations.clone()
             acts[:, -1, :] = acts[:, -1, :] + v
+
+            # Capture features for new tokens
+            seq_len = int(activations.shape[1])
+            if seen_prompt_len is None:
+                seen_prompt_len = seq_len
+            elif seq_len > seen_prompt_len:
+                # Encode the steered activations to get features
+                feature_acts = self.sae.encode(acts)
+                last_token_acts: Tensor = feature_acts[0, -1, :]
+                top_acts, top_indices = last_token_acts.topk(top_k)
+                captured_features.append(
+                    [
+                        (float(a.item()), int(i.item()))
+                        for a, i in zip(top_acts, top_indices)
+                    ]
+                )
+
             return acts
 
-        steering_hook = partial(steering, steering_vector=combined_steering_vector)
+        hook_fn = partial(combined_hook, steering_vector=combined_steering_vector)
 
         with self.model.hooks(
-            fwd_hooks=[(self.sae.cfg.metadata.hook_name, steering_hook)]
+            fwd_hooks=[(self.sae.cfg.metadata.hook_name, hook_fn)]
         ):
             output = self.model.generate(
                 input_ids,
@@ -527,7 +574,56 @@ class ModalInterp:
                 prepend_bos=self.sae.cfg.metadata.prepend_bos,
             )
 
-        return self.model.tokenizer.decode(output[0], skip_special_tokens=True)
+        full_text: str = self.model.tokenizer.decode(
+            output[0], skip_special_tokens=True
+        )
+
+        # Get generated tokens
+        prompt_length = int(input_ids.shape[1])
+        generated_token_ids: Tensor = output[0, prompt_length:]
+        generated_tokens: list[str] = [
+            self.model.tokenizer.decode([int(t.item())], skip_special_tokens=False)
+            for t in generated_token_ids
+        ]
+
+        # Align captured features with tokens
+        if len(captured_features) > len(generated_tokens):
+            captured_features = captured_features[-len(generated_tokens) :]
+        elif len(captured_features) < len(generated_tokens):
+            pad = [[] for _ in range(len(generated_tokens) - len(captured_features))]
+            captured_features = pad + captured_features
+
+        output_rows = self._explain_features(captured_features)
+        output_token_explanations = [
+            {"token": tok, "features": feats}
+            for tok, feats in zip(generated_tokens, output_rows)
+        ]
+
+        # Compute max activations
+        feature_max_activations: dict[int, float] = {}
+        for token_data in input_token_explanations:
+            for feat in token_data["features"]:
+                idx = int(feat["feature_idx"])
+                act = float(feat["activation"])
+                prev = feature_max_activations.get(idx)
+                if prev is None or act > prev:
+                    feature_max_activations[idx] = act
+
+        for token_data in output_token_explanations:
+            for feat in token_data["features"]:
+                idx = int(feat["feature_idx"])
+                act = float(feat["activation"])
+                prev = feature_max_activations.get(idx)
+                if prev is None or act > prev:
+                    feature_max_activations[idx] = act
+
+        return {
+            "prompt": prompt,
+            "full_text": full_text,
+            "input_token_explanations": input_token_explanations,
+            "output_token_explanations": output_token_explanations,
+            "feature_max_activations": feature_max_activations,
+        }
 
     def auto_steer(
         self,
@@ -975,10 +1071,9 @@ Respond with a JSON object:
                 )
                 for c in req.steering_configs
             ]
-            text = self.run_with_steering(
-                req.prompt, cfgs, max_new_tokens=req.max_new_tokens
+            return self.generate_with_steering_and_explanations(
+                req.prompt, cfgs, max_new_tokens=req.max_new_tokens, top_k=5
             )
-            return {"prompt": req.prompt, "full_text": text}
 
         @api.post("/auto_interpret")
         def auto_interpret(req: AutoInterpretRequest) -> dict[str, Any]:
@@ -1018,5 +1113,21 @@ Respond with a JSON object:
         def random_features_endpoint(count: int = 25) -> dict[str, Any]:
             features = self.get_random_features(count=count)
             return {"features": features}
+
+        @api.get("/search_features")
+        def search_features_endpoint(query: str, top_k: int = 10) -> dict[str, Any]:
+            """Search features by description using embedding similarity."""
+            results = self._search_features_by_description(query, top_k=top_k)
+            return {
+                "query": query,
+                "features": [
+                    {
+                        "feature_idx": feature_idx,
+                        "relevance_score": relevance_score,
+                        "description": description,
+                    }
+                    for feature_idx, relevance_score, description in results
+                ],
+            }
 
         return api
